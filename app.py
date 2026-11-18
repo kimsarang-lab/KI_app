@@ -11,38 +11,48 @@ h1 {letter-spacing:-.06em;}
 .hero small {letter-spacing:.13em; font-weight:600;}
 </style>''', unsafe_allow_html=True)
 st.markdown('<div class="hero"><small>MY WELLNESS CHECK</small><h1>나의 갱년기 증상 체크</h1><p>몸과 마음의 변화를 차분하게 살펴보세요.</p></div>', unsafe_allow_html=True)
-st.write('각 증상에 대해 현재 느끼는 정도를 선택해주세요. 총 11문항입니다.')
 st.caption('제공된 이미지의 문항·가중치를 구현한 참고용 앱입니다. 갱년기 여부를 진단하지 않습니다.')
 
 def clear():
     for i in range(len(SYMPTOMS)):
         st.session_state.pop(f'q{i}', None)
     st.session_state.pop('result', None)
+    st.session_state.page = 'survey'
 
-st.button('처음부터 다시 하기', on_click=clear)
-with st.form('symptoms'):
-    answers = []
-    for i, (symptom, weight) in enumerate(SYMPTOMS):
-        answers.append(st.radio(f'{i+1}. {symptom}', range(4),
-                                format_func=lambda value: LEVELS[value],
-                                index=None, horizontal=True, key=f'q{i}'))
-    submitted = st.form_submit_button('나의 점수 확인하기', type='primary', use_container_width=True)
+def edit_answers():
+    for i, value in enumerate(st.session_state.result):
+        st.session_state[f'q{i}'] = value
+    st.session_state.page = 'survey'
 
-if submitted:
-    st.session_state.pop('result', None)
-    if None in answers:
-        missing = [str(i+1) for i, a in enumerate(answers) if a is None]
-        st.warning('아직 선택하지 않은 문항이 있어요: ' + ', '.join(missing) + '번')
-    else:
-        st.session_state.result = list(answers)
-
-if 'result' in st.session_state:
+if st.session_state.get('page', 'survey') == 'survey':
+    st.caption('1 / 2 · 증상 체크')
+    st.write('각 증상에 대해 현재 느끼는 정도를 선택해주세요. 총 11문항이며, 51점 만점입니다.')
+    st.button('처음부터 다시 하기', on_click=clear)
+    with st.form('symptoms'):
+        answers = []
+        for i, (symptom, weight) in enumerate(SYMPTOMS):
+            answers.append(st.radio(f'{i+1}. {symptom}', range(4),
+                                    format_func=lambda value: LEVELS[value],
+                                    index=None, horizontal=True, key=f'q{i}'))
+        submitted = st.form_submit_button('나의 점수 확인하기', type='primary', use_container_width=True)
+    if submitted:
+        if None in answers:
+            missing = [str(i+1) for i, a in enumerate(answers) if a is None]
+            st.warning('아직 선택하지 않은 문항이 있어요: ' + ', '.join(missing) + '번')
+        else:
+            st.session_state.result = list(answers)
+            st.session_state.page = 'result'
+            st.rerun()
+else:
     result = st.session_state.result
     total = calculate(result)
-    st.divider()
+    st.caption('2 / 2 · 나의 결과')
     st.subheader('나의 체크 결과')
-    st.metric('가중치 적용 총점', f'{total}점', help=f'각 응답 점수(0~3)에 가중치를 곱한 합계입니다. 범위: 0~{MAX_SCORE}점.')
-    st.caption('마지막으로 ‘나의 점수 확인하기’를 누른 응답의 결과입니다. 응답을 바꾸면 버튼을 다시 눌러주세요.')
+    st.metric('가중치 적용 총점', f'{total}점 / {MAX_SCORE}점', help=f'각 응답 점수(0~3)에 가중치를 곱한 합계입니다. 범위: 0~{MAX_SCORE}점.')
+    st.caption(f'{MAX_SCORE}점 만점 · 각 문항의 응답 점수에 가중치를 곱해 더한 값입니다.')
+    left, right = st.columns(2)
+    left.button('← 응답 수정하기', on_click=edit_answers)
+    right.button('처음부터 다시 하기', on_click=clear)
     st.info('이 점수만으로 갱년기 여부나 증상의 원인을 판단할 수 없습니다. 증상이 불편하거나 지속된다면 의료진과 상담해주세요.')
     rows = [{'증상': name, '응답': LEVELS[a], '응답 점수': a, '가중치': w, '반영 점수': a*w}
             for (name, w), a in zip(SYMPTOMS, result)]
@@ -54,6 +64,7 @@ if 'result' in st.session_state:
     for row in rows:
         writer.writerow(row.values())
     writer.writerow(['합계', '', '', '', total])
+    writer.writerow(['만점', '', '', '', MAX_SCORE])
     writer.writerow(['안내', '제공 이미지 기반 참고용 점수; 진단 및 중증도 분류에 사용하지 않음'])
     st.download_button('결과 내려받기 (CSV)', output.getvalue().encode('utf-8-sig'),
                        'menopause_check_result.csv', 'text/csv')
